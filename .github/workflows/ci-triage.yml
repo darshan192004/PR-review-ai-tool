@@ -1,0 +1,51 @@
+name: CI Triage Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  # ─── Replace this with your actual test/build job ───
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          echo "::group::Build & Test"
+          # Simulate a failure for testing (remove in production)
+          python -c "raise RuntimeError('Undefined variable: foo')"
+          echo "::endgroup::"
+
+  # ─── AI Triage — runs only when test job fails ───
+  triage:
+    if: failure() && github.event_name == 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ci-triage-agent
+        run: |
+          pip install requests
+
+      - name: Run AI Triage
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'gemini' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ github.sha }}
+          LOG_LINES: "200"
+          LLM_TIMEOUT: "60"
+        run: |
+          # Pipe the previous job's log into the agent
+          # In production, use: ci-triage-agent --log-file build.log
+          ci-triage-agent --dry-run

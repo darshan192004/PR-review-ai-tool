@@ -1,0 +1,20 @@
+$ python -m pytest tests/
+============================= test session starts ==============================
+platform linux -- Python 3.11.0, pytest-8.0.0
+rootdir: /home/user/project
+collected 3 items
+
+tests/test_app.py ..F
+
+=================================== FAILURES ===================================
+_________________________________ test_calc ____________________________________
+
+    def test_calc():
+        result = calculate_total(10, 0)
+>       assert result == 100
+E       assert 0 == 100
+E        +  where 0 = calculate_total(10, 0)
+
+tests/test_app.py:15: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_app.py::test_calc - AssertionError: assert 0 == 100

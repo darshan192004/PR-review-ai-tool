@@ -1,0 +1,16 @@
+services:
+  ci-triage-watcher:
+    build:
+      dockerfile: watcher.Dockerfile
+      context: .
+    container_name: ci-triage-watcher
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:?Set LLM_API_KEY in .env or environment}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:?Set GITHUB_TOKEN in .env or environment}
+      - LOG_LINES=${LOG_LINES:-200}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}

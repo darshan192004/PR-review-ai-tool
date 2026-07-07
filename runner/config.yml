@@ -1,0 +1,10 @@
+# CI Triage Runner — Forgejo act_runner configuration
+# https://forgejo.org/docs/latest/admin/actions/#act-runner
+
+log:
+  level: info
+
+runner:
+  file: .runner
+  envs:
+    GITEA_ACTIONS: "true"

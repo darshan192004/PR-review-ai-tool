@@ -1,0 +1,23 @@
+services:
+  ci-triage-runner:
+    build:
+      context: .
+      dockerfile: runner/Dockerfile
+    container_name: ci-triage-runner
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner/config.yml:/config.yml
+      - runner-data:/data
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:?Set LLM_API_KEY in .env or environment}
+      - GITEA_TOKEN=${GITEA_TOKEN:?Set GITEA_TOKEN in .env or environment}
+      - FORGEJO_URL=${FORGEJO_URL:?Set FORGEJO_URL in .env or environment}
+      - LOG_LINES=${LOG_LINES:-200}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    command: ["--config", "/config.yml"]
+
+volumes:
+  runner-data:
