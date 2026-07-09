@@ -1,6 +1,7 @@
 name: CI Triage Agent
 
 "on":
+  push:
   pull_request:
     types: [opened, synchronize]
   workflow_dispatch:
@@ -43,7 +44,7 @@ jobs:
           retention-days: 1
 
   triage:
-    if: failure() && github.event_name == 'pull_request'
+    if: failure()
     needs: [test]
     runs-on: [self-hosted, ci-triage]
     permissions:
