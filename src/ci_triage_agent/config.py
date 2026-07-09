@@ -18,7 +18,7 @@ class EnvConfig:
     FORGEJO_API_URL: str | None = None
 
     GEMINI_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"
-    GEMINI_MODEL: str = "gemini-2.0-flash-001"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"
     ANTHROPIC_API_URL: str = "https://api.anthropic.com/v1"
