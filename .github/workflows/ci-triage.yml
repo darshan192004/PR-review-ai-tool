@@ -68,7 +68,6 @@ jobs:
 
       - name: Run AI Triage
         env:
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'gemini' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
