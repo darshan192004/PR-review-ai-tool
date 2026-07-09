@@ -1,29 +1,61 @@
 name: CI Triage Agent
 
-on:
+"on":
   pull_request:
     types: [opened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  # ─── Replace this with your actual test/build job ───
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-triage]
     steps:
       - uses: actions/checkout@v4
+
       - name: Run tests
+        shell: bash
         run: |
           echo "::group::Build & Test"
-          # Simulate a failure for testing (remove in production)
-          python -c "raise RuntimeError('Undefined variable: foo')"
+          python3 << 'EOF' 2>&1 | tee -a build.log
+          import sys, traceback
+          try:
+              raise RuntimeError("Undefined variable: foo")
+          except Exception as e:
+              with open("build.log", "w") as f:
+                  f.write("Traceback:\n")
+                  traceback.print_exc(file=f)
+              print(f"FAIL: {e}", file=sys.stderr)
+              sys.exit(1)
+          EOF
+          rc=${PIPESTATUS[0]}
           echo "::endgroup::"
+          exit $rc
 
-  # ─── AI Triage — runs only when test job fails ───
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 1
+
   triage:
     if: failure() && github.event_name == 'pull_request'
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-triage]
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download build log
+        uses: actions/download-artifact@v4
+        with:
+          name: build-log
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,8 +63,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install ci-triage-agent
-        run: |
-          pip install requests
+        run: pip install .
 
       - name: Run AI Triage
         env:
@@ -45,7 +76,4 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           LOG_LINES: "200"
           LLM_TIMEOUT: "60"
-        run: |
-          # Pipe the previous job's log into the agent
-          # In production, use: ci-triage-agent --log-file build.log
-          ci-triage-agent --dry-run
+        run: ci-triage-agent --log-file build.log

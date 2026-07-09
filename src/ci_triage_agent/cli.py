@@ -7,7 +7,7 @@ from .log_extractor import extract_log_context
 from .prompt_builder import build_prompt
 from .llm_client import LLMClient
 from .response_parser import parse_response
-from .ci_client import post_pr_comment
+from .ci_client import post_diagnosis
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -129,10 +129,10 @@ def run(args: argparse.Namespace) -> int:
         print(comment_body)
         return 0
 
-    success = post_pr_comment(cfg, comment_body)
+    success = post_diagnosis(cfg, comment_body)
     if success:
-        logger.info("PR comment posted successfully")
+        logger.info("Diagnosis posted successfully")
         return 0
     else:
-        logger.error("Failed to post PR comment")
+        logger.error("Failed to post diagnosis")
         return 1

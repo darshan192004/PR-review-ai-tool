@@ -25,7 +25,7 @@ from .log_extractor import extract_log_context
 from .prompt_builder import build_prompt
 from .llm_client import LLMClient
 from .response_parser import parse_response
-from .ci_client import post_pr_comment
+from .ci_client import post_diagnosis
 
 logger = logging.getLogger(__name__)
 
@@ -172,9 +172,9 @@ class ForgejoWatcher:
         pr_match = re.search(r"refs/pull/(\d+)/", ref)
         pr_number = pr_match.group(1) if pr_match else ""
 
-        if not repo or not pr_number:
+        if not repo:
             logger.warning(
-                "Cannot determine PR context: repo=%s pr=%s", repo, pr_number
+                "Cannot determine repo context: repo=%s", repo
             )
             return None
 
@@ -183,7 +183,8 @@ class ForgejoWatcher:
         else:
             owner, repo_name = "", repo
 
-        logger.info("PR context: %s/%s PR #%s", owner, repo_name, pr_number)
+        target = f"PR #{pr_number}" if pr_number else f"commit {sha[:7]}" if sha else "unknown"
+        logger.info("Repo context: %s/%s (%s)", owner, repo_name, target)
 
         return {
             "owner": owner,
@@ -212,9 +213,10 @@ class ForgejoWatcher:
             return None
 
     def _run_triage(self, context: dict, logs: str) -> None:
+        target = context["pr_number"] or context["sha"][:7] if context["sha"] else "unknown"
         logger.info(
-            "Running triage for %s/%s PR #%s",
-            context["owner"], context["repo"], context["pr_number"],
+            "Running triage for %s/%s (target: %s)",
+            context["owner"], context["repo"], target,
         )
 
         prompt = build_prompt(logs)
@@ -256,11 +258,12 @@ class ForgejoWatcher:
         self.config.PR_NUMBER = context["pr_number"]
         self.config.COMMIT_SHA = context["sha"]
 
-        success = post_pr_comment(self.config, comment_body)
+        success = post_diagnosis(self.config, comment_body)
         if success:
+            target = context["pr_number"] or context["sha"][:7]
             logger.info(
-                "Triage complete — comment posted to %s/%s PR #%s",
-                context["owner"], context["repo"], context["pr_number"],
+                "Triage complete — comment posted to %s/%s (target: %s)",
+                context["owner"], context["repo"], target,
             )
         else:
             logger.error("Failed to post triage comment")
