@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     python3 \
     python3-pip \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install --upgrade --break-system-packages setuptools
@@ -28,7 +29,10 @@ RUN mkdir -p /opt/actions-runner && \
 
 COPY runner-github/entrypoint.sh /opt/actions-runner/
 COPY runner-github/configure.sh /opt/actions-runner/
-RUN chmod +x /opt/actions-runner/entrypoint.sh /opt/actions-runner/configure.sh
+RUN chmod +x /opt/actions-runner/entrypoint.sh /opt/actions-runner/configure.sh && \
+    useradd -m runner -u 1001 && \
+    chown -R runner:runner /opt/actions-runner && \
+    echo "runner ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/runner
 
 FROM base AS dind
 

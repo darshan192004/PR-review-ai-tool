@@ -23,9 +23,14 @@ python3 -m ci_triage_agent.watcher &
 WATCHER_PID=$!
 echo "[CI Triage Runner] Watcher started (PID: $WATCHER_PID)"
 
+# Make Docker socket accessible to non-root runner user
+chmod 666 /var/run/docker.sock 2>/dev/null || true
+
 if [ ! -f /opt/actions-runner/.runner ]; then
     echo "[CI Triage Runner] Runner not configured — running configure.sh"
-    /opt/actions-runner/configure.sh
+    GITHUB_URL="${GITHUB_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}}"
+    export GITHUB_URL
+    sudo -E -u runner /opt/actions-runner/configure.sh
 fi
 
 cleanup() {
@@ -41,7 +46,7 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 echo "[CI Triage Runner] Starting GitHub Actions runner..."
-/opt/actions-runner/run.sh "$@" &
+sudo -u runner /opt/actions-runner/run.sh "$@" &
 RUNNER_PID=$!
 
 wait "$RUNNER_PID"
