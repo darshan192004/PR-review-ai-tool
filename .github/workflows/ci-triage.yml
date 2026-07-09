@@ -22,8 +22,9 @@ jobs:
           echo "::group::Build & Test"
           python3 << 'EOF' 2>&1 | tee -a build.log
           import sys, traceback
+          foo = None
           try:
-              raise RuntimeError("Undefined variable: foo")
+              print(foo)
           except Exception as e:
               with open("build.log", "w") as f:
                   f.write("Traceback:\n")
