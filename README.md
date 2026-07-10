@@ -4,7 +4,7 @@ AI-driven CI failure & bug triage agent. Deploys as a **custom Forgejo runner** 
 
 ```
 ┌─ Developer pushes PR ──→ Forgejo runner starts ──→ CI fails ──→ ─┐
-│  watcher.py detects exit code ≠ 0                                  │
+│  docker_watcher.py detects exit code ≠ 0                           │
 │  → extracts build log                                              │
 │  → calls Gemini API                                                 │
 │  → parses root cause + code patch                                   │
@@ -230,7 +230,7 @@ formatted diagnosis to stdout without posting to a PR — perfect for local test
 
 ```bash
 # Start the watcher in dry-run mode (won't call Gemini or post)
-python -m ci_triage_agent.watcher --dry-run
+python -m ci_triage_agent.cli.watcher_entry --dry-run
 
 # In another terminal, simulate a CI container failure:
 docker run --rm -e GITHUB_ACTIONS=true \
@@ -244,16 +244,33 @@ docker run --rm -e GITHUB_ACTIONS=true \
 
 ```
 src/ci_triage_agent/
-├── __init__.py
-├── __main__.py        # CLI entry point
-├── cli.py              # Argument parsing & orchestration
-├── config.py           # Environment variable config
-├── log_extractor.py    # Extract last N lines from error log
-├── prompt_builder.py   # Build zero-shot LLM prompt
-├── llm_client.py       # Provider-agnostic LLM (Gemini/OpenAI/Anthropic)
-├── response_parser.py  # Parse Markdown → root cause + code patch
-├── ci_client.py        # Post comment to PR (GitHub + Forgejo API)
-└── watcher.py          # Docker event watcher daemon
+├── __init__.py              # Package exports
+├── __main__.py              # CLI entry point
+├── cli/
+│   ├── __init__.py
+│   ├── parser.py            # CLI argument definitions
+│   ├── orchestrator.py      # Triage pipeline orchestration
+│   └── watcher_entry.py     # Watcher daemon entry point
+├── config/
+│   ├── __init__.py
+│   └── settings.py          # AppSettings — environment config
+├── models/
+│   ├── __init__.py
+│   └── diagnosis.py         # Diagnosis domain model
+├── llm/
+│   ├── __init__.py
+│   └── client.py            # LLMClient (Gemini/OpenAI/Anthropic)
+├── ci/
+│   ├── __init__.py
+│   └── platform.py          # CI platform integration (GitHub/Forgejo)
+├── pipeline/
+│   ├── __init__.py
+│   ├── log_context.py       # Log tail extraction
+│   ├── diagnosis_prompt.py  # System prompt assembly
+│   └── diagnosis_parser.py  # LLM response → Diagnosis model
+└── monitoring/
+    ├── __init__.py
+    └── docker_watcher.py    # Docker event watcher daemon
 
 runner/
 ├── Dockerfile           # Custom Forgejo runner image
@@ -315,6 +332,189 @@ ExecStop=docker stop ci-triage-runner
 [Install]
 WantedBy=multi-user.target
 ```
+
+## Deployment on Existing Runners
+
+### Option A: Forgejo (Self-Hosted Runner)
+
+You need: a Forgejo server with Actions enabled, a host with Docker, and a bot token.
+
+#### 1. Create a bot user and token
+
+```
+Forgejo Settings → Users → Create New User
+  Username: ci-triage-bot
+  Email: ci-triage-bot@yourcompany.com
+  Password: (generate a strong one)
+
+Log in as ci-triage-bot → Settings → Applications → Generate Token
+  Name: ci-triage-agent
+  Scope: write:repository, read:repository
+  → Copy the token (starts with AQ.)
+```
+
+#### 2. Set up environment
+
+```bash
+export LLM_API_KEY="AIzaSy..."                  # Gemini API key
+export GITEA_TOKEN="AQ..."                       # Forgejo bot token
+export FORGEJO_URL="https://forgejo.yourcompany.com"
+```
+
+#### 3. Register the runner
+
+```bash
+docker compose run --rm ci-triage-runner \
+  act_runner register \
+    --instance $FORGEJO_URL \
+    --token <runner-registration-token> \
+    --name ci-triage-runner \
+    --labels ubuntu-latest:docker://node:20-bookworm
+```
+
+The registration token is found at your Forgejo instance under:
+`Site Admin → Actions → Runners → Create New Runner`
+
+#### 4. Start the runner stack
+
+```bash
+docker compose up -d
+```
+
+This starts both the `act_runner` daemon (picks up CI jobs) and the `ci-triage-watcher` daemon (monitors for failures).
+
+To verify the watcher is running:
+
+```bash
+docker compose logs -f ci-triage-runner | grep "CI Triage Watcher"
+```
+
+---
+
+### Option B: GitHub (Self-Hosted Runner)
+
+You need: a GitHub account with a self-hosted runner, a host with Docker, and a PAT.
+
+#### 1. Create a GitHub Personal Access Token
+
+```
+GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
+  Repository access: All repositories
+  Permissions: Issues: Write
+  → Copy the token (ghp_...)
+```
+
+#### 2. Set up environment
+
+```bash
+export LLM_API_KEY="AIzaSy..."                  # Gemini API key
+export GITHUB_TOKEN="ghp_..."                    # GitHub PAT
+```
+
+#### 3. Build and start the watcher sidecar
+
+```bash
+docker compose -f docker-compose.watcher.yml up -d --build
+```
+
+This starts only the `ci-triage-watcher` as a standalone container. It assumes you already have a GitHub self-hosted runner running on the same host.
+
+#### 4. Add watcher to an existing GitHub runner host
+
+If you already have a GitHub Actions runner installed directly on the host (not in Docker), run the watcher as a companion container:
+
+```bash
+docker run -d \
+  --name ci-triage-watcher \
+  --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e LLM_API_KEY=$LLM_API_KEY \
+  -e GITHUB_TOKEN=$GITHUB_TOKEN \
+  ci-triage-watcher:latest
+```
+
+---
+
+### Option C: Deploy Without Docker (Bare Metal)
+
+For environments where Docker-in-Docker is not available, or for debugging:
+
+#### 1. Install the package
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+#### 2. Run the CLI triage
+
+```bash
+export LLM_API_KEY="AIzaSy..."
+ci-triage-agent --print --log-file tests/fixtures/sample_error_log.txt
+```
+
+#### 3. Run the watcher daemon directly
+
+```bash
+export LLM_API_KEY="AIzaSy..."
+export GITHUB_TOKEN="ghp_..."   # or GITEA_TOKEN="AQ..."
+ci-triage-watcher
+```
+
+---
+
+### Required Environment Variables Reference
+
+| Variable | Required | Forgejo | GitHub | Description |
+|---|---|---|---|---|
+| `LLM_API_KEY` | ✅ | ✅ | ✅ | Gemini/OpenAI/Anthropic API key |
+| `GITEA_TOKEN` | ✅* | ✅ | — | Forgejo bot token |
+| `GITHUB_TOKEN` | ✅* | — | ✅ | GitHub PAT with `issues: write` |
+| `FORGEJO_URL` | ✅ | ✅ | — | Your Forgejo instance URL |
+| `LLM_PROVIDER` | — | optional | optional | `gemini` (default), `openai`, `anthropic` |
+| `LOG_LINES` | — | optional | optional | Tail lines to analyze (default: 200) |
+| `LOG_LEVEL` | — | optional | optional | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+*One of `GITEA_TOKEN` or `GITHUB_TOKEN` is required depending on your CI provider.
+
+---
+
+### Verifying the Deployment
+
+#### Test the pipeline without posting
+
+```bash
+ci-triage-agent --dry-run --log-file tests/fixtures/sample_error_log.txt
+```
+
+Expected output: the full prompt that would be sent to the LLM, ending with `=== END PROMPT ===`.
+
+#### Test end-to-end with a sample log
+
+```bash
+ci-triage-agent --print --log-file tests/fixtures/sample_error_log.txt
+```
+
+Expected output: a formatted Markdown diagnosis with root cause, affected file, and code patch.
+
+#### Test the watcher
+
+```bash
+# In terminal 1: start watcher in dry-run mode
+ci-triage-watcher --dry-run
+
+# In terminal 2: simulate a CI failure
+docker run --rm \
+  -e GITHUB_ACTIONS=true \
+  -e GITHUB_REPOSITORY=test-org/test-repo \
+  -e GITHUB_REF=refs/pull/1/head \
+  alpine sh -c "echo 'intentional failure' && exit 1"
+```
+
+Terminal 1 should log the detection and print the prompt.
+
+---
 
 ## Security
 

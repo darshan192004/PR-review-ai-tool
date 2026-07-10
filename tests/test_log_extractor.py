@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from ci_triage_agent.log_extractor import extract_log_context
+from ci_triage_agent.pipeline.log_context import extract_log_context
 
 
 def test_reads_from_file():

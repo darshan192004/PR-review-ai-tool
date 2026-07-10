@@ -3,8 +3,8 @@ import os
 import responses
 import pytest
 
-from ci_triage_agent.config import EnvConfig
-from ci_triage_agent.ci_client import (
+from ci_triage_agent.config.settings import AppSettings
+from ci_triage_agent.ci.platform import (
     post_pr_comment,
     detect_pr_from_commit,
     post_commit_comment,
@@ -12,8 +12,8 @@ from ci_triage_agent.ci_client import (
 )
 
 
-def _make_config(**overrides) -> EnvConfig:
-    cfg = EnvConfig.load()
+def _make_config(**overrides) -> AppSettings:
+    cfg = AppSettings.load()
     cfg.CI_PROVIDER = "github"
     cfg.GITHUB_TOKEN = "gh-test-token"
     cfg.REPO_OWNER = "test-owner"

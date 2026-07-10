@@ -2,7 +2,7 @@
 set -e
 
 echo "[CI Triage Runner] Starting watcher..."
-python3 -m ci_triage_agent.watcher &
+python3 -m ci_triage_agent.cli.watcher_entry &
 WATCHER_PID=$!
 echo "[CI Triage Runner] Watcher started (PID: $WATCHER_PID)"
 

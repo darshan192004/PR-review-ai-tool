@@ -1,7 +1,9 @@
 import os
 
 
-class EnvConfig:
+class AppSettings:
+    """Application settings loaded from environment variables."""
+
     LLM_API_KEY: str | None = None
     LLM_PROVIDER: str = "gemini"
     CI_PROVIDER: str | None = None
@@ -29,11 +31,11 @@ class EnvConfig:
     LLM_MAX_RETRIES: int = 3
     LLM_RETRY_DELAY: float = 2.0
 
-    DRY_RUN: bool = False
     LOG_LEVEL: str = "INFO"
 
     @classmethod
-    def load(cls) -> "EnvConfig":
+    def load(cls) -> "AppSettings":
+        """Load settings from environment variables, applying defaults for optional fields."""
         cfg = cls()
         cfg.LLM_API_KEY = os.environ.get("LLM_API_KEY")
         cfg.LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").lower()
@@ -70,12 +72,12 @@ class EnvConfig:
         except ValueError:
             cfg.LLM_MAX_RETRIES = 3
 
-        cfg.DRY_RUN = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
         cfg.LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
         return cfg
 
     def detect_ci_provider(self) -> str:
+        """Detect the CI platform from environment variables or explicit config."""
         if self.CI_PROVIDER:
             return self.CI_PROVIDER.lower()
         if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -85,6 +87,7 @@ class EnvConfig:
         return "unknown"
 
     def get_ci_token(self) -> str | None:
+        """Return the CI platform token matching the detected provider."""
         provider = self.detect_ci_provider()
         if provider == "github":
             return self.GITHUB_TOKEN

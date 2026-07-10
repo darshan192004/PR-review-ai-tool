@@ -3,13 +3,13 @@ import os
 
 import requests
 
-from .config import EnvConfig
+from ..config.settings import AppSettings
 
 logger = logging.getLogger(__name__)
 
 
-def _get_repo_context(
-    cfg: EnvConfig,
+def _resolve_repository_context(
+    cfg: AppSettings,
 ) -> dict | None:
     owner = cfg.REPO_OWNER
     repo = cfg.REPO_NAME
@@ -48,17 +48,17 @@ def _get_repo_context(
     }
 
 
-def _get_pr_context(
-    cfg: EnvConfig,
+def _resolve_pull_request_context(
+    cfg: AppSettings,
 ) -> tuple[str, str, str, str] | None:
-    context = _get_repo_context(cfg)
+    context = _resolve_repository_context(cfg)
     if context is None or not context["pr_number"]:
         return None
     return (context["owner"], context["repo"], context["pr_number"], context["provider"])
 
 
 def _build_comment_url(
-    owner: str, repo: str, pr_number: str, provider: str, cfg: EnvConfig
+    owner: str, repo: str, pr_number: str, provider: str, cfg: AppSettings
 ) -> tuple[str, str]:
     if provider == "forgejo":
         base_url = cfg.FORGEJO_API_URL or os.environ.get(
@@ -73,7 +73,7 @@ def _build_comment_url(
     return url, token or ""
 
 
-def _build_headers(cfg: EnvConfig, token: str) -> dict:
+def _build_headers(cfg: AppSettings, token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github.v3+json",
@@ -81,7 +81,7 @@ def _build_headers(cfg: EnvConfig, token: str) -> dict:
     }
 
 
-def _post_comment(url: str, token: str, body: str, cfg: EnvConfig) -> bool:
+def _post_comment(url: str, token: str, body: str, cfg: AppSettings) -> bool:
     if not token:
         logger.error("No CI token available")
         return False
@@ -114,8 +114,9 @@ def _post_comment(url: str, token: str, body: str, cfg: EnvConfig) -> bool:
         return False
 
 
-def post_pr_comment(cfg: EnvConfig, body: str) -> bool:
-    context = _get_pr_context(cfg)
+def post_pr_comment(cfg: AppSettings, body: str) -> bool:
+    """Post a comment to a pull request on the detected CI platform."""
+    context = _resolve_pull_request_context(cfg)
     if context is None:
         logger.error("Cannot determine PR context — check environment variables")
         return False
@@ -144,8 +145,9 @@ def post_pr_comment(cfg: EnvConfig, body: str) -> bool:
 
 
 def detect_pr_from_commit(
-    cfg: EnvConfig, owner: str, repo: str, commit_sha: str
+    cfg: AppSettings, owner: str, repo: str, commit_sha: str
 ) -> str | None:
+    """Look up the GitHub API to find an open PR associated with a given commit SHA."""
     if not commit_sha:
         logger.warning("No commit SHA provided for PR detection")
         return None
@@ -193,8 +195,9 @@ def detect_pr_from_commit(
 
 
 def post_commit_comment(
-    cfg: EnvConfig, owner: str, repo: str, commit_sha: str, body: str
+    cfg: AppSettings, owner: str, repo: str, commit_sha: str, body: str
 ) -> bool:
+    """Post a comment directly on a commit when no PR context is available."""
     if not commit_sha:
         logger.error("Cannot post commit comment — no commit SHA")
         return False
@@ -213,8 +216,9 @@ def post_commit_comment(
     return _post_comment(url, token, body, cfg)
 
 
-def post_diagnosis(cfg: EnvConfig, body: str) -> bool:
-    context = _get_repo_context(cfg)
+def post_diagnosis(cfg: AppSettings, body: str) -> bool:
+    """Route a diagnosis comment to the appropriate destination: PR, commit, or detected PR."""
+    context = _resolve_repository_context(cfg)
     if context is None:
         logger.error("Cannot determine repo context — check environment variables")
         return False

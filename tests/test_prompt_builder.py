@@ -1,4 +1,4 @@
-from ci_triage_agent.prompt_builder import build_prompt, SYSTEM_INSTRUCTION
+from ci_triage_agent.pipeline.diagnosis_prompt import build_prompt, SYSTEM_INSTRUCTION
 
 
 def test_prompt_contains_system_instruction():

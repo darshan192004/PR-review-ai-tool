@@ -5,18 +5,21 @@ from typing import Any
 
 import requests
 
-from .config import EnvConfig
+from ..config.settings import AppSettings
 
 logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    def __init__(self, config: EnvConfig) -> None:
+    """Provider-agnostic client for LLM inference with retry logic."""
+
+    def __init__(self, config: AppSettings) -> None:
         self.config = config
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": "ci-triage-agent/0.1.0"})
 
     def analyze(self, prompt: str) -> str | None:
+        """Send a prompt to the configured LLM provider with automatic retries on transient failures."""
         provider = self.config.LLM_PROVIDER
         logger.info("Calling LLM provider: %s", provider)
 

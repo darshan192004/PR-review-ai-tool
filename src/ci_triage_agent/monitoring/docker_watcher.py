@@ -1,42 +1,42 @@
 """
-ci-triage-watcher — Docker event watcher daemon.
+Docker event watcher daemon for CI Triage Agent.
 
 Runs inside a Forgejo/GitHub Actions runner container.
 Monitors Docker events for failed job containers, extracts
 logs, runs AI triage, and posts comments to PRs.
 
 Usage:
-  python -m ci_triage_agent.watcher
-  python -m ci_triage_agent.watcher --dry-run
+  python -m ci_triage_agent.monitoring.docker_watcher
+  python -m ci_triage_agent.cli.watcher_entry
 """
 
-import argparse
 import json
 import logging
-import os
 import re
 import signal
 import subprocess
-import sys
 import time
 
-from .config import EnvConfig
-from .log_extractor import extract_log_context
-from .prompt_builder import build_prompt
-from .llm_client import LLMClient
-from .response_parser import parse_response
-from .ci_client import post_diagnosis
+from ..config.settings import AppSettings
+from ..pipeline.log_context import extract_log_context
+from ..pipeline.diagnosis_prompt import build_prompt
+from ..llm.client import LLMClient
+from ..pipeline.diagnosis_parser import parse_response
+from ..ci.platform import post_diagnosis
 
 logger = logging.getLogger(__name__)
 
 
-class ForgejoWatcher:
-    def __init__(self, config: EnvConfig, dry_run: bool = False) -> None:
+class DockerWatcher:
+    """Daemon that monitors Docker events for failed CI containers and triggers diagnosis."""
+
+    def __init__(self, config: AppSettings, dry_run: bool = False) -> None:
         self.config = config
         self.dry_run = dry_run
         self._running = False
 
     def run(self) -> None:
+        """Enter the main event loop, streaming Docker die events until signalled to stop."""
         self._running = True
         logger.info("CI Triage Watcher started (dry_run=%s)", self.dry_run)
         logger.info(
@@ -66,7 +66,7 @@ class ForgejoWatcher:
                         continue
                     try:
                         event = json.loads(line)
-                        self._handle_event(event)
+                        self._process_container_exit(event)
                     except json.JSONDecodeError:
                         continue
                     except Exception as e:
@@ -93,7 +93,7 @@ class ForgejoWatcher:
         logger.info("Received signal %d, shutting down...", signum)
         self._running = False
 
-    def _handle_event(self, event: dict) -> None:
+    def _process_container_exit(self, event: dict) -> None:
         actor = event.get("Actor", {})
         attrs = actor.get("Attributes", {})
         exit_code = attrs.get("exitCode", "0")
@@ -113,7 +113,7 @@ class ForgejoWatcher:
             container_id[:12], exit_code,
         )
 
-        context = self._extract_context(container_id)
+        context = self._resolve_ci_environment(container_id)
         if not context:
             return
 
@@ -121,7 +121,7 @@ class ForgejoWatcher:
         if not logs:
             return
 
-        self._run_triage(context, logs)
+        self._execute_diagnosis(context, logs)
 
     def _is_ci_container(self, container_id: str) -> bool:
         try:
@@ -143,7 +143,7 @@ class ForgejoWatcher:
         except (json.JSONDecodeError, subprocess.TimeoutExpired, OSError):
             return False
 
-    def _extract_context(self, container_id: str) -> dict | None:
+    def _resolve_ci_environment(self, container_id: str) -> dict | None:
         try:
             result = subprocess.run(
                 [
@@ -212,7 +212,7 @@ class ForgejoWatcher:
             logger.error("Error reading container logs: %s", e)
             return None
 
-    def _run_triage(self, context: dict, logs: str) -> None:
+    def _execute_diagnosis(self, context: dict, logs: str) -> None:
         target = context["pr_number"] or context["sha"][:7] if context["sha"] else "unknown"
         logger.info(
             "Running triage for %s/%s (target: %s)",
@@ -269,44 +269,6 @@ class ForgejoWatcher:
             logger.error("Failed to post triage comment")
 
 
-def parse_watcher_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="ci-triage-watcher",
-        description="Docker event watcher for CI Triage Agent",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print prompt without calling LLM or posting comments",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default=None,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level",
-    )
-    return parser.parse_args(argv)
-
-
-def main() -> None:
-    args = parse_watcher_args()
-    cfg = EnvConfig.load()
-
-    if args.log_level:
-        cfg.LOG_LEVEL = args.log_level
-
-    logging.basicConfig(
-        level=getattr(logging, cfg.LOG_LEVEL, logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
-
-    watcher = ForgejoWatcher(config=cfg, dry_run=args.dry_run)
-    try:
-        watcher.run()
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-
-
 if __name__ == "__main__":
-    main()
+    from ..cli.watcher_entry import main as watcher_main
+    watcher_main()
