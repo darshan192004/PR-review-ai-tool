@@ -4,10 +4,9 @@ set -e
 : "${GITHUB_URL:?GITHUB_URL is required (e.g. https://github.com/your-org)}"
 : "${RUNNER_TOKEN:?RUNNER_TOKEN is required}"
 
-RUNNER_NAME="${RUNNER_NAME:-ci-triage-runner-$(hostname)}"
+RUNNER_NAME="${RUNNER_NAME:-ci-triage-runner}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci-triage}"
 RUNNER_GROUP="${RUNNER_GROUP:-default}"
-REPLACE_RUNNER="${REPLACE_RUNNER:-true}"
 
 echo "[CI Triage Runner] Registering runner:"
 echo "  URL:      $GITHUB_URL"
@@ -21,7 +20,7 @@ echo "  Group:    $RUNNER_GROUP"
     --name "$RUNNER_NAME" \
     --labels "$RUNNER_LABELS" \
     --runnergroup "$RUNNER_GROUP" \
-    --replace "$REPLACE_RUNNER" \
+    --replace \
     --unattended
 
 echo "[CI Triage Runner] Registration complete"

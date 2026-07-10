@@ -26,7 +26,13 @@ echo "[CI Triage Runner] Watcher started (PID: $WATCHER_PID)"
 # Make Docker socket accessible to non-root runner user
 chmod 666 /var/run/docker.sock 2>/dev/null || true
 
-# --- Auto-registration logic ---
+# --- Stable runner name & labels ---
+# Must be stable across restarts so --replace can find the old registration.
+RUNNER_NAME="${RUNNER_NAME:-ci-triage-runner}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,ci-triage}"
+export RUNNER_NAME RUNNER_LABELS
+
+# --- Auto-registration with stale-runner cleanup ---
 # Generates a fresh runner registration token on every container start,
 # ensuring the runner never goes stale after PC reboot.
 
@@ -36,27 +42,57 @@ GITHUB_REPO="${GITHUB_REPO:-}"
 # Extract owner/repo from GITHUB_URL if not provided separately
 if [ -z "$GITHUB_OWNER" ] || [ -z "$GITHUB_REPO" ]; then
     if [ -n "$GITHUB_URL" ]; then
-        # GITHUB_URL format: https://github.com/owner/repo
         GITHUB_OWNER=$(echo "$GITHUB_URL" | awk -F'/' '{print $(NF-1)}')
         GITHUB_REPO=$(echo "$GITHUB_URL" | awk -F'/' '{print $NF}')
     fi
 fi
 
 if [ -n "$GH_TOKEN" ] && [ -n "$GITHUB_OWNER" ] && [ -n "$GITHUB_REPO" ]; then
-    echo "[CI Triage Runner] Generating fresh registration token via GitHub API..."
+    API_BASE="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners"
 
+    # Delete any existing runner with our target name on GitHub
+    echo "[CI Triage Runner] Cleaning up stale runner '${RUNNER_NAME}' from GitHub..."
+    EXISTING=$(curl -s -H "Authorization: token $GH_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        "$API_BASE" | jq -r \
+        ".runners[] | select(.name == \"${RUNNER_NAME}\") | .id") || true
+
+    for id in $EXISTING; do
+        echo "[CI Triage Runner]   Deleting stale runner ID $id ..."
+        curl -s -X DELETE \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$API_BASE/$id" > /dev/null || true
+    done
+
+    # Clean up ALL offline runners (accumulated from old hostname-based registrations)
+    echo "[CI Triage Runner] Cleaning up all offline runners..."
+    OFFLINE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        "$API_BASE" | jq -r \
+        '.runners[] | select(.status == "offline") | .id') || true
+
+    for id in $OFFLINE; do
+        echo "[CI Triage Runner]   Deleting offline runner ID $id ..."
+        curl -s -X DELETE \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$API_BASE/$id" > /dev/null || true
+    done
+
+    # Generate fresh registration token
+    echo "[CI Triage Runner] Generating fresh registration token via GitHub API..."
     REG_TOKEN=$(curl -s -X POST \
         -H "Authorization: token $GH_TOKEN" \
         -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token" \
-        | jq -r '.token')
+        | jq -r '.token') || true
 
     if [ "$REG_TOKEN" != "null" ] && [ -n "$REG_TOKEN" ]; then
         RUNNER_TOKEN="$REG_TOKEN"
         export RUNNER_TOKEN
         GITHUB_URL="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}"
         export GITHUB_URL
-        # Remove old registration so configure.sh --replace registers fresh
         rm -f /opt/actions-runner/.runner
         echo "[CI Triage Runner] Fresh registration token obtained"
     else
@@ -76,6 +112,19 @@ fi
 
 cleanup() {
     echo "[CI Triage Runner] Shutting down..."
+
+    # Remove this runner from GitHub so it doesn't appear offline
+    if [ -f /opt/actions-runner/.runner ]; then
+        RUNNER_ID=$(cat /opt/actions-runner/.runner | python3 -c "import sys,json; print(json.load(sys.stdin).get('runner_id', ''))" 2>/dev/null || true)
+        if [ -n "$RUNNER_ID" ] && [ -n "$GH_TOKEN" ] && [ -n "$GITHUB_OWNER" ] && [ -n "$GITHUB_REPO" ]; then
+            echo "[CI Triage Runner] Removing runner ID $RUNNER_ID from GitHub..."
+            curl -s -X DELETE \
+                -H "Authorization: token $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/${RUNNER_ID}" > /dev/null 2>&1 || true
+        fi
+    fi
+
     kill -TERM "$RUNNER_PID" 2>/dev/null || true
     wait "$RUNNER_PID" 2>/dev/null || true
     kill -TERM "$WATCHER_PID" 2>/dev/null || true
