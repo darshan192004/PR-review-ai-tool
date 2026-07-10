@@ -16,31 +16,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install dev dependencies
+        run: |
+          pip install -e ".[dev]" --break-system-packages 2>&1 | tail -5
+
       - name: Run tests
         shell: bash
         run: |
-          echo "::group::Build & Test"
-          python3 << 'EOF' 2>&1 | tee -a build.log
-          import sys, traceback
-          try:
-              raise RuntimeError("Undefined variable: foo")
-          except Exception as e:
-              with open("build.log", "w") as f:
-                  f.write("Traceback:\n")
-                  traceback.print_exc(file=f)
-              print(f"FAIL: {e}", file=sys.stderr)
-              sys.exit(1)
-          EOF
-          rc=${PIPESTATUS[0]}
-          echo "::endgroup::"
-          exit $rc
+          set -o pipefail
+          python3 -m pytest tests/ -v 2>&1 | tee test-output.log
 
-      - name: Upload build log
+      - name: Upload test log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
+          name: test-output
+          path: test-output.log
           retention-days: 1
 
   triage:
@@ -53,18 +44,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download build log
+      - name: Download test log
         uses: actions/download-artifact@v4
         with:
-          name: build-log
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+          name: test-output
 
       - name: Install ci-triage-agent
-        run: pip install .
+        run: pip install -e . --break-system-packages 2>&1 | tail -3
 
       - name: Run AI Triage
         env:
@@ -72,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
           COMMIT_SHA: ${{ github.sha }}
           LOG_LINES: "200"
           LLM_TIMEOUT: "60"
-        run: ci-triage-agent --log-file build.log
+        run: ci-triage-agent --log-file test-output.log

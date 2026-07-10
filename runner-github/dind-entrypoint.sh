@@ -90,11 +90,17 @@ trap cleanup SIGTERM SIGINT
 echo "[CI Triage Runner] Writing env vars to .env for job steps..."
 : > /opt/actions-runner/.env
 for var in LLM_API_KEY LLM_PROVIDER GH_TOKEN; do
-    if [ -n "${!var}" ]; then
-        echo "${var}=${!var}" >> /opt/actions-runner/.env
+    val="${!var}"
+    if [ -n "$val" ]; then
+        echo "${var}=${val}" >> /opt/actions-runner/.env
+        echo "[CI Triage Runner]   ✓ ${var} written to .env ($(echo "$val" | wc -c) chars)"
+    else
+        echo "[CI Triage Runner]   ✗ ${var} is EMPTY — skipped"
     fi
 done
 chown runner:runner /opt/actions-runner/.env
+echo "[CI Triage Runner] .env file contents:"
+cat /opt/actions-runner/.env
 
 echo "[CI Triage Runner] Starting GitHub Actions runner..."
 sudo -u runner /opt/actions-runner/run.sh "$@" &
