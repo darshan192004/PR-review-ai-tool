@@ -86,6 +86,9 @@ def test_http_error_returns_false():
 
 @responses.activate
 def test_forgejo_falls_back_to_env_vars(monkeypatch):
+    # Clear GitHub Actions env vars that would interfere with Gitea fallback
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY_OWNER", raising=False)
     monkeypatch.setenv("GITEA_REPOSITORY", "org/forgejo-repo")
     monkeypatch.setenv("GITEA_REPOSITORY_OWNER", "org")
 
