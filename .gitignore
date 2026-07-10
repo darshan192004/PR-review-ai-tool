@@ -5,3 +5,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Personal IDE / AI agent configuration
+.claude/
+.cursorrules
+.windsurfrules
+.kiro/
+.opencode.json
