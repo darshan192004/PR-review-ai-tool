@@ -12,3 +12,6 @@ build/
 .windsurfrules
 .kiro/
 .opencode.json
+
+# Environment secrets (GH_TOKEN, LLM_API_KEY, etc.)
+.env
