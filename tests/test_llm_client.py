@@ -1,11 +1,11 @@
 import responses
 
-from ci_triage_agent.config import EnvConfig
-from ci_triage_agent.llm_client import LLMClient
+from ci_triage_agent.config.settings import AppSettings
+from ci_triage_agent.llm.client import LLMClient
 
 
-def _make_config(**overrides) -> EnvConfig:
-    cfg = EnvConfig.load()
+def _make_config(**overrides) -> AppSettings:
+    cfg = AppSettings.load()
     cfg.LLM_API_KEY = "test-key"
     for k, v in overrides.items():
         setattr(cfg, k, v)

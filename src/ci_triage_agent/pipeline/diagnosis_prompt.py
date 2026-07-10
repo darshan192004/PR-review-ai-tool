@@ -43,6 +43,7 @@ No suggested fix available
 
 
 def build_prompt(log_context: str) -> str:
+    """Assemble a zero-shot LLM prompt from the system instruction and log context, truncating if needed."""
     max_log_chars = 80_000
 
     if len(log_context) > max_log_chars:

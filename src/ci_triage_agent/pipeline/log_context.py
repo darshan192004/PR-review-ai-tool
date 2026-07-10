@@ -8,6 +8,7 @@ def extract_log_context(
     log_file: str | None = None,
     num_lines: int = 200,
 ) -> str:
+    """Read the last N lines from a log file or stdin, with an optional truncation marker."""
     if log_file:
         try:
             with open(log_file, "r", errors="replace") as f:

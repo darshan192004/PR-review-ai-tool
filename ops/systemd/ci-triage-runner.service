@@ -1,0 +1,21 @@
+[Unit]
+Description=CI Triage Runner (GitHub Actions self-hosted)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Restart=always
+RestartSec=10
+ExecStartPre=-/usr/bin/docker rm -f ci-triage-runner
+ExecStart=/usr/bin/docker run --rm \
+  --name ci-triage-runner \
+  --privileged \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --env-file /opt/ci-triage-runner/env \
+  ci-triage-runner-github:latest
+ExecStop=/usr/bin/docker stop ci-triage-runner
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

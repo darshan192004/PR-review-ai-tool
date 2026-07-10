@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from ci_triage_agent.response_parser import parse_response, ParsedResponse
+from ci_triage_agent.pipeline.diagnosis_parser import parse_response
+from ci_triage_agent.models.diagnosis import Diagnosis
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -47,7 +48,7 @@ def test_returns_empty_for_none():
 
 
 def test_format_markdown_includes_all_sections():
-    parsed = ParsedResponse(
+    parsed = Diagnosis(
         root_cause="Division by zero",
         affected_file="src/calc.py:42",
         code_patch="- x / 0\n+ x / 1",
@@ -61,7 +62,7 @@ def test_format_markdown_includes_all_sections():
 
 
 def test_format_markdown_fallback_when_missing():
-    parsed = ParsedResponse()
+    parsed = Diagnosis()
     md = parsed.format_markdown()
     assert "Unable to parse" in md
 

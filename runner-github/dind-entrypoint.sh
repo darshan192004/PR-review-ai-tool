@@ -19,17 +19,58 @@ for i in $(seq 1 15); do
 done
 
 echo "[CI Triage Runner] Starting watcher daemon..."
-python3 -m ci_triage_agent.watcher &
+python3 -m ci_triage_agent.cli.watcher_entry &
 WATCHER_PID=$!
 echo "[CI Triage Runner] Watcher started (PID: $WATCHER_PID)"
 
 # Make Docker socket accessible to non-root runner user
 chmod 666 /var/run/docker.sock 2>/dev/null || true
 
+# --- Auto-registration logic ---
+# Generates a fresh runner registration token on every container start,
+# ensuring the runner never goes stale after PC reboot.
+
+GITHUB_OWNER="${GITHUB_OWNER:-}"
+GITHUB_REPO="${GITHUB_REPO:-}"
+
+# Extract owner/repo from GITHUB_URL if not provided separately
+if [ -z "$GITHUB_OWNER" ] || [ -z "$GITHUB_REPO" ]; then
+    if [ -n "$GITHUB_URL" ]; then
+        # GITHUB_URL format: https://github.com/owner/repo
+        GITHUB_OWNER=$(echo "$GITHUB_URL" | awk -F'/' '{print $(NF-1)}')
+        GITHUB_REPO=$(echo "$GITHUB_URL" | awk -F'/' '{print $NF}')
+    fi
+fi
+
+if [ -n "$GH_TOKEN" ] && [ -n "$GITHUB_OWNER" ] && [ -n "$GITHUB_REPO" ]; then
+    echo "[CI Triage Runner] Generating fresh registration token via GitHub API..."
+
+    REG_TOKEN=$(curl -s -X POST \
+        -H "Authorization: token $GH_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token" \
+        | jq -r '.token')
+
+    if [ "$REG_TOKEN" != "null" ] && [ -n "$REG_TOKEN" ]; then
+        RUNNER_TOKEN="$REG_TOKEN"
+        export RUNNER_TOKEN
+        GITHUB_URL="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}"
+        export GITHUB_URL
+        # Remove old registration so configure.sh --replace registers fresh
+        rm -f /opt/actions-runner/.runner
+        echo "[CI Triage Runner] Fresh registration token obtained"
+    else
+        echo "[CI Triage Runner] WARNING: Could not generate registration token."
+        echo "[CI Triage Runner] Check that GH_TOKEN has 'Administration: Write' scope."
+    fi
+else
+    echo "[CI Triage Runner] WARNING: GH_TOKEN, GITHUB_OWNER, or GITHUB_REPO not set."
+    echo "[CI Triage Runner] Falling back to existing .runner file (may be stale after reboot)."
+fi
+
+# Register if no .runner file exists (either fresh start or after deleting stale one)
 if [ ! -f /opt/actions-runner/.runner ]; then
     echo "[CI Triage Runner] Runner not configured — running configure.sh"
-    GITHUB_URL="${GITHUB_URL:-https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}}"
-    export GITHUB_URL
     sudo -E -u runner /opt/actions-runner/configure.sh
 fi
 
