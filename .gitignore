@@ -20,3 +20,8 @@ build/
 AGENTS.md
 CLAUDE.md
 GEMINI.md
+
+# Local utility scripts (kept locally for E2E testing, not needed on remote)
+.mcp.json
+scripts/test_failure_example.py
+scripts/validate_e2e.sh
