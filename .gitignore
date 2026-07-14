@@ -15,3 +15,8 @@ build/
 
 # Environment secrets (GH_TOKEN, LLM_API_KEY, etc.)
 .env
+
+# Project config / docs (kept locally, not on remote)
+AGENTS.md
+CLAUDE.md
+GEMINI.md
